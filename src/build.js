@@ -11,31 +11,31 @@ import ProgressBar from 'ascii-progress';
 import through from 'through2';
 import stream from 'stream';
 import minimatch from 'minimatch';
-import {MongoClient} from 'mongodb';
-
-
-const dbName = 'gsmSearch';
-const dbUrl = `mongodb://localhost:27017/${dbName}`;
+import {getDbAndCollection} from './mongo';
 
 const cacheDir = '/tmp/.gsm-search-cache';
 const listCachePath = path.join(cacheDir, 'list.json');
-const detailsCachePath = path.join(cacheDir, 'details.json');
+const detailsCachePath = path.join(cacheDir, 'details');
+const detailsConvertedCachePath = path.join(cacheDir, 'details-converted');
+
 fs.mkdirpSync(cacheDir);
+fs.mkdirpSync(detailsCachePath);
+fs.mkdirpSync(detailsConvertedCachePath);
 
 var argv = parseArgs(process.argv.slice(2), {
   alias: {
     h: 'help',
     l: 'list',
-    f: 'forceList',
+    f: 'force',
     F: 'forceAll'
   },
-  boolean: ['help', 'list', 'force']
+  boolean: ['help', 'list', 'forceAll']
 });
 
 const usage = `
-build [-h][-f][-F]
+build [-h][-f <l|d|c>][-F]
  -h - help
- -f - clear list cache
+ -f - clear type cache l -> list, d -> details, c -> details-converted
  -F - clear all caches
 `
 
@@ -45,14 +45,31 @@ if (argv.help) {
 }
 
 let pathsToRemove = [];
-if (argv.forceList) {
-  pathsToRemove = [listCachePath];
+if (argv.force) {
+  const pathToRemove = {
+    'l': listCachePath,
+    'd': detailsCachePath,
+    'c': detailsConvertedCachePath
+  }[argv.force];
+  if (!pathToRemove) {
+    console.error(`${argv.force} is not a valid argument to -f`);
+    process.exit(1);
+  }
+  pathsToRemove = [pathToRemove];
 }
 if (argv.forceAll) {
-  pathsToRemove = [listCachePath, detailsCachePath];
+  pathsToRemove = [listCachePath, detailsCachePath, detailsConvertedCachePath];
 }
 pathsToRemove.forEach(cachePath => {
-  fs.existsSync(cachePath) && fs.unlinkSync(cachePath);
+  const exists = fs.existsSync(cachePath);
+  if (!exists) return;
+
+  const stat = fs.statSync(cachePath);
+  if (stat.isDirectory()) {
+    fs.emptyDirSync(cachePath);
+  } else {
+    fs.unlinkSync(cachePath);
+  }
 });
 
 
@@ -63,51 +80,9 @@ const PHONES_URL = (() => {
 })();
 const DETAILS_URL = "http://www.gsmarena.com/phone-widget.php3?idPhone=";
 
-
-const fetchList = async () => {
-  try {
-    const [makers, phones] = await fetch(PHONES_URL).then((r) => r.json());
-    return phones.map(([makerId, phoneId, name, searchStr, thumb]) => {
-      return {
-        maker_id: makerId,
-        maker_name: makers[makerId],
-        phone_id: phoneId,
-        phone_name: name,
-        search_str: searchStr,
-        thumb
-      }
-    });
-  } catch (e) {
-    throw e;
-  }
-}
-
-let cachedList = null;
-const getList = async () => {
-  if (cachedList) return cachedList;
-
-  if (!fs.existsSync(listCachePath)) {
-    try {
-      const list = await fetchList();
-      fs.writeFileSync(listCachePath, JSON.stringify(list, null, 2));
-    } catch (e) {
-      throw e;
-    }
-  }
-
-  try {
-    const json = fs.readFileSync(listCachePath, 'utf-8');
-    cachedList = JSON.parse(json);
-    return cachedList;
-  } catch (e) {
-    throw e
-  }
-}
-
-
+// utility
 // https://developer.mozilla.org/en-US/docs/Web/API/Node/nodeType
 const TEXT_NODE = 3;
-
 const jsdomInnerText = (element) => {
   if (element.nodeType == TEXT_NODE) {
     return element.nodeValue;
@@ -119,6 +94,67 @@ const jsdomInnerText = (element) => {
   return text;
 }
 
+
+const getList = async () => {
+  const filename = listCachePath;
+  if (fs.existsSync(filename)) {
+    return fs.readJsonSync(filename);
+  }
+
+  const [makers, phones] = await fetch(PHONES_URL).then((r) => r.json());
+  const list = phones.map(([maker_id, phone_id, phone_name, search_str, thumb]) => {
+    return {
+      maker_id,
+      maker_name: makers[maker_id],
+      phone_id,
+      phone_name,
+      search_str,
+      thumb
+    }
+  });
+  fs.writeJsonSync(filename, list);
+  return list;
+}
+
+const GET_DETAIL_HTML_MAX_ERRORS = 2;
+const getDetailsHtml = async (id, errorCount=0) => {
+  const filename = path.join(detailsCachePath, id + '.html');
+  if (fs.existsSync(filename)) {
+    return fs.readFileSync(filename, 'utf-8');
+  }
+  
+  try {
+    const detailsHtml = await fetch(`${DETAILS_URL}${id}`).then(r => r.text());
+    fs.writeFileSync(filename, detailsHtml);
+    return detailsHtml;
+  
+  } catch (e) {
+    if (errorCount > GET_DETAIL_HTML_MAX_ERRORS) {
+      throw e
+    }
+    return getDetailsHtml(id, errorCount + 1);
+  }
+};
+
+const getDetails = async (id) => {
+  const filename = path.join(detailsConvertedCachePath, id + '.json');
+  if (fs.existsSync(filename)) {
+    return fs.readJsonSync(filename);
+  }
+  const list = await getList();
+  const item = list.filter(item => item.phone_id == id)[0];
+  const detailsHtml = await getDetailsHtml(id);
+  const details = convertDetailsHtml(detailsHtml);
+  const detailsCombined = {
+    ...details,
+    ...item
+  };
+  fs.writeJsonSync(filename, detailsCombined);
+  return detailsCombined;
+}
+
+
+// converters. these should be at runtime
 const convertSize = (sizeAndWeightString) => {
   // 148.9 x 68.1 x 8 mm, 155 g
   const sizeAndWeightMatch = sizeAndWeightString.match(/\s*([0-9\.x\s]+)\s+mm,\s*(.+)/);
@@ -177,246 +213,65 @@ const convertDetailsHtml = (markup) => {
   return details;
 }
 
-let cachedDetailsHtml = null;
-const getDetailsHtml = () => {
-  if (!cachedDetailsHtml) {
-    if (!fs.existsSync(detailsCachePath)) {
-      fs.writeFileSync(detailsCachePath, '{}');
-    }
-    cachedDetailsHtml = fs.readFileSync(detailsCachePath, 'utf-8');
-  }
-  return JSON.parse(cachedDetailsHtml);
-}
 
-const FETCH_ONE_DETAIL_HTML_MAX_ERRORS = 2;
-const fetchOneDetailsHtml = async (id, errorCount=0) => fetch(`${DETAILS_URL}${id}`)
-  .then(r => r.text())
-  .then(details => {
-    const idToDetailsHtml = getDetailsHtml();
-    idToDetailsHtml[id] = details;
-    fs.writeFileSync(detailsCachePath, JSON.stringify(idToDetailsHtml));
-    return idToDetailsHtml;
-  })
-  .catch(e => {
-    if (errorCount > FETCH_ONE_DETAIL_HTML_MAX_ERRORS) {
-      return e;
-    }
-    return fetchOneDetailsHtml(id, errorCount + 1);
-  });
-
-
-const fetchDetailsHtml = async (ids) => {
-  if (!(ids instanceof Array)) {
-    ids = [ids];
-  }
-  if (!ids.length) {
-    return {};
-  }
-
-  const idToDetailsHtml = getDetailsHtml();
-  const idsToFetch = [];
-  ids.forEach(id => {
-    if (!idToDetailsHtml[id]) {
-      idsToFetch.push(id);
-    }
-  });
-
-  const bar = new ProgressBar({
-    schema: 'fetching :current/:total :bar',
-    total: idsToFetch.length
-  });
-  return new Promise((resolve, reject) => {
-    const fns = idsToFetch.map(id => (callback) => {
-      fetchOneDetailsHtml(id)
-        .then(() => {
-          bar.tick();
-          callback()
-        })
-        .catch(e => {
-          console.error(`..failed to fetch ${id}`);
-          callback(e)
-        });
-    });
-    async.series(fns, (error) => {
-      if (error) return reject(error);
-      resolve();
-    })
-  });
-}
-
-
-const printList = async (ids) => {
-  try {
-    const phones = await getList();
-    console.log('PHONES', JSON.stringify(phones, null, 2));
-  } catch (e) {
-    console.error('ERROR', e);
-    process.exit(1);
-  }
-}
-
-class IdStream extends stream.Readable {
-  constructor(ids, options) {
-    super(options);
-    this._ids = ids;
-    this._index = 0;
-  }
-  _read(size) {
-    if (this._index >= this._ids.length) {
-      this.push(null);
-    } else {
-      const buf = Buffer.from(String(this._ids[this._index]), 'ascii');
-      this._index++;
-      this.push(buf);
-    }
-  }
-}
-
-const createIdsStream = (ids) => {
-  if (!(ids instanceof Array)) {
-    ids = [ids];
-  }
-  return new IdStream(ids);
-}
-
-const createDetailsHtmlStream = async (ids) => {
-  const list = await getList();
-  return fetchDetailsHtml(ids)
-  .then(() => {
-    const idToDetailsHtml = getDetailsHtml();
-    return createIdsStream(ids).pipe(through.obj((id, enc, callback) => {
-      callback(null, {
-        html: idToDetailsHtml[id],
-        listItem: list.filter(item => item.phoneId == id)[0]
-      });
-    }));
-  })
-};
-
-const createDetailsStream = async (ids) => {
-  const detailsHtmlStream = await createDetailsHtmlStream(ids);
-  return detailsHtmlStream.pipe(through.obj((detailsHtml, enc, callback) => {
-    const {html, listItem} = detailsHtml;
-    const details = convertDetailsHtml(html);
-    callback(null, {
-      ...listItem,
-      ...details
-    });
-  }))
-}
-  
 
 const build = async () => {
-  let ids;
-  try {
-    const phones = await getList();
-    ids = phones.map(phone => phone.phoneId);
-  } catch (e) {
-    throw e
-  }
+  let list = await getList();
 
-  // const numberOperator = (operatorFn) => (q, v) => {
-  //   q = parseFloat(q);
-  //   v = parseFloat(v);
-  //   if (isNaN(q) || isNaN(v)) {
-  //     return false;
-  //   }
-  //   return operatorFn(q, v);
-  // }
-  // const operators = {
-  //   '=': (q, v) => v == q,
-  //   '<': (q, v) => v < q,
-  //   '>': (q, v) => v > q,
-  //   '<=': (q, v) => v <= q,
-  //   '>=': (q, v) => v >= q,
-  //   '=~': (q, v) => {
-  //     const re = minimatch.makeRe(q);
-  //     //console.log(`${q} glob: ${v} re:${re}`)
-  //     return re.test(v);
-  //   }
-  // };
-  // Object.keys(operators).forEach(operator => {
-  //   if (operator === '=~') return;
-  //   const operatorFn = operators[operator];
-  //   operators[operator] = numberOperator(operatorFn);
-  // });
-  // let matchFn = function () { return false };
-  // const queryMatchers = queries.map(query => {
-  //   const parts = query.split(/\s+/);
-  //   const [attributeName, op, ...queryValueParts] = parts;
-  //   const queryValue = queryValueParts.join(' ');
-  //   if (!operators[op]) return matchFn;
-  //   // if the query was "status = Accepted", the matcher function
-  //   //   will be ("Accepted" == 
-  //   const operatorFn = operators[op];
-  //   return (details) => {
-
-  //     // this makes "size.height" evaluate to details.size.height
-  //     try {
-  //       const attributeNameParts = attributeName.split('.');
-  //       let attributeValue = details;
-  //       for (let i = 0; i < attributeNameParts.length; i++) {
-  //         attributeValue = attributeValue[attributeNameParts[i]];
-  //         if (!attributeValue) break;
-  //       }
-  //       if (!attributeValue) return matchFn;
-  //       return operatorFn(queryValue, attributeValue);
-
-  //     } catch (e) {
-  //       console.error(`Failed trying to match query "${query}" with "${JSON.stringify(details, null, 2)}"`)
-  //       throw e;
-  //     }
-  //   }
-  // });
-
-  
-  let db, collection, detailsStream;
-  try {
-    db = await new Promise((resolve, reject) => {
-      MongoClient.connect(dbUrl, (error, db) => {
-        if (error) return reject(error);
-        resolve(db);
-      });
-    });
-    collection = await new Promise((resolve, reject) => {
-      db.collection('phones', (error, collection) => {
-        if (error) return reject(error);
-        resolve(collection);
-      });
-    });
-    try {
-      await collection.drop()
-    } catch (e) {
-      // i don't care if this fails
-    }
-    detailsStream = await createDetailsStream(ids);
-  } catch (e) {
-    throw e
-  }
-
-  const bar = new ProgressBar({
-    schema: 'inserted :current/:total :bar',
-    total: ids.length,
+  const loadingDetailsBar = new ProgressBar({
+    schema: 'fetched :current/:total :bar',
+    total: list.length,
     clear: true
   });
-  detailsStream
-  .on('data', async (details) => {
-    bar.tick();
-    try {
-      await collection.insertOne(details)
-    } catch (e) {
-      console.error("Failed inserting details...", e);
-    }
-  })
-  .on('end', async () => {
-    try {
-      await db.close();
-    } catch (e) {
-      throw e
-    }
-    console.log('Wrote to db');
-    process.exit();
+
+  const detailsList = await new Promise((resolve, reject) => {
+    async.series(list.map(item => callback => {
+      loadingDetailsBar.tick();
+      getDetails(item.phone_id)
+        .then(details => { callback(null, details) })
+        .catch(e => { callback(e) });
+    }), (error, detailsList) => {
+      if (error) return reject(error);
+      resolve(detailsList);
+    })
   });
+
+  let [db, collection] = await getDbAndCollection();
+  
+  try {
+    await collection.drop();
+  } catch (e) {
+    // dont care
+  }
+  
+  const insertingDetailsBar = new ProgressBar({
+    schema: 'inserted :current/:total :bar',
+    total: detailsList.length,
+    clear: true
+  });
+
+  const insertOne = async (details, errorCount=0) => {
+    const {phone_id} = details;
+    const existing = await collection.findOne({ phone_id: {$eq: phone_id} });
+    if (existing) return;
+    await collection.insertOne(details);
+  }
+
+  await new Promise((resolve, reject) => {
+    async.series(detailsList.map(details => callback => {
+      insertingDetailsBar.tick();
+      insertOne(details)
+        .then(() => { callback() })
+        .catch(e => { callback(e) });
+    }), (error) => {
+      if (error) return reject(error);
+      resolve();
+    });
+  });
+
+  await db.close();
+  console.log('Wrote to db');
+  process.exit();
 }
 
 build().catch(e => {

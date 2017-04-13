@@ -1,7 +1,5 @@
 import parseArgs from 'minimist';
-import {MongoClient} from 'mongodb';
-
-const dbName = 'gsmSearch';
+import {getDbAndCollection} from './mongo';
 
 var argv = parseArgs(process.argv.slice(2), {
   alias: {
@@ -11,8 +9,11 @@ var argv = parseArgs(process.argv.slice(2), {
 });
 
 const usage = `
-search [-h]
+search [-h] [query][,query...]
  -h - help
+ query - something to be translated to mongodb like things, so...
+  - "size.width $gte 50"
+  - "memory $regex /[234] GB RAM/"
 `
 
 if (argv.help) {
@@ -20,33 +21,38 @@ if (argv.help) {
   process.exit();
 }
 
-const url = `mongodb://localhost:27017/${dbName}`;
 const search = async (queries) => {
-  let db, collection;
-  try {
-    db = await new Promise((resolve, reject) => {
-      MongoClient.connect(url, (error, db) => {
-        if (error) return reject(error);
-        resolve(db);
-      });
-    });
-    collection = await new Promise((resolve, reject) => {
-      db.collection('phones', (error, collection) => {
-        if (error) return reject(error);
-        resolve(collection);
-      });
-    });
-  } catch (e) {
-    throw e
-  }
-  
-  console.log('ready');
+  let [db, collection] = await getDbAndCollection();
 
-  try {
-    await db.close();
-  } catch (e) {
-    throw e
-  }
+  let mongoQuery = {};
+  queries.forEach(query => {
+    const queryParts = query.split(/\s+/);
+    let [name, op, ...value] = queryParts;
+    if (!mongoQuery[name]) {
+      mongoQuery[name] = {};
+    }
+
+    op = '$' + op;
+
+    // I'm accepting values that are object literals or regexes
+    value = value.join(' ');
+    if (value.match(/^[\{\/]/)) {
+      value = eval(value);
+    } else if (value.match(/^[0-9\.]+$/)) {
+      value = parseFloat(value);
+    }
+
+    mongoQuery[name] = {
+      ...mongoQuery[name],
+      [op]: value
+    };
+  });
+
+  // console.log('query', mongoQuery);
+  const results = await collection.find(mongoQuery).project({_id:0}).toArray();
+  console.dir(results);
+
+  await db.close();
 }
 search(argv._).catch(e => {
   console.error(e);
