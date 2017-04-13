@@ -1,4 +1,7 @@
+require('source-map-support').install({ environment: 'node' });
+
 import parseArgs from 'minimist';
+import esprima from 'esprima';
 import {getDbAndCollection} from './mongo';
 
 var argv = parseArgs(process.argv.slice(2), {
@@ -21,34 +24,111 @@ if (argv.help) {
   process.exit();
 }
 
-const search = async (queries) => {
+const convertAstExpressionToObject = (expression) => {
+  if (expression.type == 'Literal') {
+    return expression.value;
+  }
+  if (expression.type == 'Identifier') {
+    // identifiers are for existing variables. we have none of those, so treat this like a literal instead
+    return expression.name;
+  }
+  if (expression.type == 'ArrayExpression') {
+    return expression.elements.map(convertAstExpressionToObject);
+  }
+  if (expression.type == 'ObjectExpression') {
+    const value = {};
+    expression.properties.forEach(property => {
+      const name = property.key.name;
+      value[name] = convertAstExpressionToObject(property.value);
+    });
+    return value;
+  }
+  throw new Error(`Can't handle expression type ${expression.type}`);
+  // if (expression.type == 'NewExpression') {
+  //   const {callee, arguments} = expression;
+  //   // this'll be 
+  //   return eval(
+  //     `new ${callee}(` +
+  //       `${arguments.map(convertAstNodeToObject})})`
+  //   );
+  // }
+}
+
+const convertAstNodeToObject = (astNode) => {
+  if (astNode.type == 'ExpressionStatement') {
+    return convertAstExpressionToObject(astNode.expression);
+  }
+  if (astNode.type == 'BlockStatement') {
+    const value = {};
+    astNode.body.forEach(childAstNode => {
+      if (childAstNode.type == 'LabeledStatement') {
+        const {label, body} = childAstNode;
+        if (label.type != 'Identifier') {
+          throw new Error(`Unknown label type ${label.type}`)
+        }
+        value[label.name] = convertAstNodeToObject(body);
+      }
+    });
+    return value;
+  }
+  throw new Error(`Unknown type ${astNode.type}`);
+}
+
+const convertQueryStringToMongoQuery = (queryString) => {
+
+  const queryStringParts = queryString.split(/\s+/);
+  let [name, op, ...value] = queryStringParts;
+  
+  const isOr = !!name.match(/^\$?or/);
+  
+  // everything else is like {propname: filter}
+  // but or is like {$or: [filter, filter]}
+  if (isOr) {
+    value = [op].concat(value);
+    op = name;
+  }
+  if (!op.match(/^\$/)) {
+    op = '$' + op;
+  }
+
+  value = value.join(' ').replace(/^\s+/, '').replace(/\s+$/, '');
+  if (!value) {
+    throw new Error(`query must have value -> ${queryString}`);
+  }
+
+  const astNode = esprima.parse(value).body[0];
+  value = convertAstNodeToObject(astNode);
+
+  if (isOr) {
+    name = op;
+    value = value.map(childQueryString => {
+      const [childName, childValue] = convertQueryStringToMongoQuery(childQueryString);
+      return {
+        [childName]: childValue
+      };
+    });
+  } else {
+    value = {
+      [op]: value
+    }
+  }
+  return [name, value];
+}
+
+const search = async (queryStrings) => {
   let [db, collection] = await getDbAndCollection();
 
   let mongoQuery = {};
-  queries.forEach(query => {
-    const queryParts = query.split(/\s+/);
-    let [name, op, ...value] = queryParts;
-    if (!mongoQuery[name]) {
-      mongoQuery[name] = {};
+  queryStrings.forEach(queryString => {
+    let [name, value] = convertQueryStringToMongoQuery(queryString);
+    if (mongoQuery[name]) {
+      value = {
+        ...mongoQuery[name],
+        ...value
+      }
     }
-
-    op = '$' + op;
-
-    // I'm accepting values that are object literals or regexes
-    value = value.join(' ');
-    if (value.match(/^[\{\/]/)) {
-      value = eval(value);
-    } else if (value.match(/^[0-9\.]+$/)) {
-      value = parseFloat(value);
-    }
-
-    mongoQuery[name] = {
-      ...mongoQuery[name],
-      [op]: value
-    };
+    mongoQuery[name] = value;
   });
-
-  // console.log('query', mongoQuery);
   const results = await collection.find(mongoQuery).project({_id:0}).toArray();
   console.dir(results);
 

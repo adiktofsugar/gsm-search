@@ -35,7 +35,7 @@ var argv = parseArgs(process.argv.slice(2), {
 const usage = `
 build [-h][-f <l|d|c>][-F]
  -h - help
- -f - clear type cache l -> list, d -> details, c -> details-converted
+ -f - clear type cache l -> list, d -> details (and converted), c -> details-converted
  -F - clear all caches
 `
 
@@ -46,16 +46,15 @@ if (argv.help) {
 
 let pathsToRemove = [];
 if (argv.force) {
-  const pathToRemove = {
-    'l': listCachePath,
-    'd': detailsCachePath,
-    'c': detailsConvertedCachePath
+  pathsToRemove = {
+    'l': [listCachePath],
+    'd': [detailsCachePath, detailsConvertedCachePath],
+    'c': [detailsConvertedCachePath]
   }[argv.force];
-  if (!pathToRemove) {
+  if (!pathsToRemove) {
     console.error(`${argv.force} is not a valid argument to -f`);
     process.exit(1);
   }
-  pathsToRemove = [pathToRemove];
 }
 if (argv.forceAll) {
   pathsToRemove = [listCachePath, detailsCachePath, detailsConvertedCachePath];
@@ -119,6 +118,7 @@ const getList = async () => {
 const GET_DETAIL_HTML_MAX_ERRORS = 2;
 const getDetailsHtml = async (id, errorCount=0) => {
   const filename = path.join(detailsCachePath, id + '.html');
+  const convertedFilename = path.join(detailsConvertedCachePath, id + '.json');
   if (fs.existsSync(filename)) {
     return fs.readFileSync(filename, 'utf-8');
   }
@@ -126,6 +126,9 @@ const getDetailsHtml = async (id, errorCount=0) => {
   try {
     const detailsHtml = await fetch(`${DETAILS_URL}${id}`).then(r => r.text());
     fs.writeFileSync(filename, detailsHtml);
+    // since getDetails is from this data, and that also writes a file,
+    //   I'm going to delete the derived file too
+    fs.existsSync(convertedFilename) && fs.unlinkSync(convertedFilename);
     return detailsHtml;
   
   } catch (e) {
@@ -238,36 +241,9 @@ const build = async () => {
 
   let [db, collection] = await getDbAndCollection();
   
-  try {
-    await collection.drop();
-  } catch (e) {
-    // dont care
-  }
-  
-  const insertingDetailsBar = new ProgressBar({
-    schema: 'inserted :current/:total :bar',
-    total: detailsList.length,
-    clear: true
-  });
-
-  const insertOne = async (details, errorCount=0) => {
-    const {phone_id} = details;
-    const existing = await collection.findOne({ phone_id: {$eq: phone_id} });
-    if (existing) return;
-    await collection.insertOne(details);
-  }
-
-  await new Promise((resolve, reject) => {
-    async.series(detailsList.map(details => callback => {
-      insertingDetailsBar.tick();
-      insertOne(details)
-        .then(() => { callback() })
-        .catch(e => { callback(e) });
-    }), (error) => {
-      if (error) return reject(error);
-      resolve();
-    });
-  });
+  const phoneIds = detailsList.map(details => parseInt(details.phone_id, 10));
+  await collection.deleteMany({ phone_id: {$in: phoneIds}});
+  await collection.insertMany(detailsList);
 
   await db.close();
   console.log('Wrote to db');
