@@ -6,14 +6,16 @@ import {getDbAndCollection} from './mongo';
 
 var argv = parseArgs(process.argv.slice(2), {
   alias: {
-    h: 'help'
+    h: 'help',
+    d: 'debug'
   },
-  boolean: ['help']
+  boolean: ['help', 'debug']
 });
 
 const usage = `
-search [-h] [query][,query...]
+search [-h][-d] [query][,query...]
  -h - help
+ -d - debug
  query - something to be translated to mongodb like things, so...
   - "size.width $gte 50"
   - "memory $regex /[234] GB RAM/"
@@ -129,8 +131,12 @@ const search = async (queryStrings) => {
     }
     mongoQuery[name] = value;
   });
+  if (argv.debug) {
+    console.log(`[DEBUG] query: ${JSON.stringify(mongoQuery, null, 2)}`)
+  }
   const results = await collection.find(mongoQuery).project({_id:0}).toArray();
-  console.dir(results);
+  console.log(JSON.stringify(results, null, 2));
+  console.log(`Found ${results.length} results`);
 
   await db.close();
 }

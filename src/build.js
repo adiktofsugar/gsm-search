@@ -13,7 +13,7 @@ import stream from 'stream';
 import minimatch from 'minimatch';
 import {getDbAndCollection} from './mongo';
 
-const cacheDir = '/tmp/.gsm-search-cache';
+const cacheDir = path.resolve(__dirname, '..', '.gsm-search-cache');
 const listCachePath = path.join(cacheDir, 'list.json');
 const detailsCachePath = path.join(cacheDir, 'details');
 const detailsConvertedCachePath = path.join(cacheDir, 'details-converted');
@@ -139,13 +139,11 @@ const getDetailsHtml = async (id, errorCount=0) => {
   }
 };
 
-const getDetails = async (id) => {
+const getDetails = async (id, item) => {
   const filename = path.join(detailsConvertedCachePath, id + '.json');
   if (fs.existsSync(filename)) {
     return fs.readJsonSync(filename);
   }
-  const list = await getList();
-  const item = list.filter(item => item.phone_id == id)[0];
   const detailsHtml = await getDetailsHtml(id);
   const details = convertDetailsHtml(detailsHtml);
   const detailsCombined = {
@@ -192,10 +190,55 @@ const convertSize = (sizeAndWeightString) => {
   }
 }
 
+const convertResolution = (resolutionString) => {
+  // 176 x 208 pixels, 2.1 inches, 35 x 41 mm (~130 ppi pixel density)
+  const pixelsMatch = resolutionString.match(/([\dx\s]+)\spixels/)
+  const pixelsDims = pixelsMatch && pixelsMatch[1].split(/\sx\s/)
+  const pixels = {
+    width: pixelsDims ? parseInt(pixelsDims[0], 10) : null,
+    height: pixelsDims ? parseInt(pixelsDims[1], 10) : null
+  };
+  const inchesMatch = resolutionString.match(/([\d\.]+)\sinches/);
+  const inches = inchesMatch && parseInt(inchesMatch[1], 10);
+  const densityMatch = resolutionString.match(/~?([\d+])\sppi pixel density/);
+  const density = densityMatch && parseInt(densityMatch[1], 10);
+  return {
+    raw: resolutionString,
+    pixels,
+    inches,
+    density
+  };
+}
+const convertMemory = (memoryString) => {
+  const kbMatch = memoryString.match(/(\d+)\s*KB RAM/);
+  const mbMatch = memoryString.match(/(\d+)\s*MB RAM/);
+  const gbMatch = memoryString.match(/(\d+)\s*GB RAM/);
+  let kb = kbMatch && kbMatch[1];
+  if (mbMatch) {
+    kb = parseInt(mbMatch[1], 10) * 1000;
+  }
+  if (gbMatch) {
+    kb = parseInt(gbMatch[1], 10) * 1000000;
+  }
+  return {
+    raw: memoryString,
+    kb,
+    mb: kb / 1000,
+    gb: kb / 1000000
+  };
+}
+const convertCamera = (cameraString) => {
+  return cameraString;
+}
+const convertCpu = (cpuString) => {
+  return cpuString;
+}
+
 const convertDetailsHtml = (markup) => {
   const options = {};
   const doc = jsdom(`<html><body><table>${markup}</table></body></html>`, options);
   const table = doc.documentElement.querySelector('body>table');
+  doc.close();
 
   const details = {};
   const rows = Array.from(table.querySelectorAll('tr'));
@@ -209,6 +252,10 @@ const convertDetailsHtml = (markup) => {
     let value = jsdomInnerText(cells[1]);
     if (name == 'size') {
       value = convertSize(value);
+    } else if (name == 'resolution') {
+      value = convertResolution(value);
+    } else if (name == 'memory') {
+      value = convertMemory(value);
     }
     
     details[name] = value;
@@ -219,32 +266,24 @@ const convertDetailsHtml = (markup) => {
 
 
 const build = async () => {
-  let list = await getList();
+  const list = await getList();
+  const phoneIds = list.map(details => parseInt(details.phone_id, 10));
+
+  const [db, collection] = await getDbAndCollection();
+  await collection.deleteMany({ phone_id: {$in: phoneIds}});
 
   const loadingDetailsBar = new ProgressBar({
     schema: 'fetched :current/:total :bar',
-    total: list.length,
+    total: phoneIds.length,
     clear: true
   });
 
-  const detailsList = await new Promise((resolve, reject) => {
-    async.series(list.map(item => callback => {
-      loadingDetailsBar.tick();
-      getDetails(item.phone_id)
-        .then(details => { callback(null, details) })
-        .catch(e => { callback(e) });
-    }), (error, detailsList) => {
-      if (error) return reject(error);
-      resolve(detailsList);
-    })
-  });
-
-  let [db, collection] = await getDbAndCollection();
+  await Promise.all(list.map(async item => {
+    loadingDetailsBar.tick();
+    const details = await getDetails(item.phone_id, item);
+    await collection.insertOne(details);
+  }));
   
-  const phoneIds = detailsList.map(details => parseInt(details.phone_id, 10));
-  await collection.deleteMany({ phone_id: {$in: phoneIds}});
-  await collection.insertMany(detailsList);
-
   await db.close();
   console.log('Wrote to db');
   process.exit();
