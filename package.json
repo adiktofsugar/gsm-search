@@ -7,6 +7,7 @@
     "start": "concurrently \"esw -w src\" \"babel src -w -d build -s inline\"",
     "search-db": "node ./build/search.js",
     "build-db": "node ./build/build.js",
+    "start-db": "mongod --config /usr/local/etc/mongod.conf",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

@@ -75,9 +75,9 @@ pathsToRemove.forEach(cachePath => {
 const PHONES_URL = (() => {
   const d = new Date();
   const cacheStr = `${d.getMonth()}${Math.round((d.getDate() * 24 + d.getHours()) / 6)}`;
-  return `http://www.gsmarena.com/quicksearch-${cacheStr}.jpg`;
+  return `https://www.gsmarena.com/quicksearch-${cacheStr}.jpg`;
 })();
-const DETAILS_URL = "http://www.gsmarena.com/phone-widget.php3?idPhone=";
+const DETAILS_URL = "https://www.gsmarena.com/phone-widget.php3?idPhone=";
 
 // utility
 // https://developer.mozilla.org/en-US/docs/Web/API/Node/nodeType
@@ -115,7 +115,11 @@ const getList = async () => {
   return list;
 }
 
-const GET_DETAIL_HTML_MAX_ERRORS = 2;
+const delay = ms => new Promise((resolve) => {
+  setTimeout(resolve, ms);
+});
+
+const GET_DETAIL_HTML_MAX_ERRORS = 5;
 const getDetailsHtml = async (id, errorCount=0) => {
   const filename = path.join(detailsCachePath, id + '.html');
   const convertedFilename = path.join(detailsConvertedCachePath, id + '.json');
@@ -135,6 +139,7 @@ const getDetailsHtml = async (id, errorCount=0) => {
     if (errorCount > GET_DETAIL_HTML_MAX_ERRORS) {
       throw e
     }
+    await delay(2000);
     return getDetailsHtml(id, errorCount + 1);
   }
 };
@@ -279,9 +284,9 @@ const build = async () => {
   });
 
   await Promise.all(list.map(async item => {
-    loadingDetailsBar.tick();
     const details = await getDetails(item.phone_id, item);
     await collection.insertOne(details);
+    loadingDetailsBar.tick();
   }));
   
   await db.close();
