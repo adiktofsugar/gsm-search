@@ -1,30 +1,28 @@
-require('source-map-support').install({ environment: 'node' });
-import "babel-polyfill";
-import fetch from 'isomorphic-fetch'
-import parseArgs from 'minimist';
-import fs from 'fs-extra';
-import path from 'path';
-import Promise from 'promise';
-import {jsdom} from 'jsdom';
-import async from 'async';
-import ProgressBar from 'ascii-progress';
-import through from 'through2';
-import stream from 'stream';
-import minimatch from 'minimatch';
-import {getDbAndCollection} from './mongo';
-import { cacheDir, listCachePath, detailsCachePath, detailsConvertedCachePath } from "./cachePaths";
-import fetchAndWriteList from "./fetchAndWriteList";
-import fetchAndWriteDetails from "./fetchAndWriteDetails";
-import convertAndWriteDetails from "./convertAndWriteDetails";
+import parseArgs from "minimist";
+import fs from "fs-extra";
+import path from "path";
+import Promise from "promise";
+import ProgressBar from "ascii-progress";
+import { getDbAndCollection } from "./lib/mongo";
+import {
+  listCachePath,
+  detailsCachePath,
+  detailsConvertedCachePath
+} from "./lib/cachePaths";
+import fetchAndWriteList from "./lib/fetchAndWriteList";
+import fetchAndWriteDetails from "./lib/fetchAndWriteDetails";
+import convertAndWriteDetails from "./lib/convertAndWriteDetails";
+
+require("source-map-support").install({ environment: "node" });
 
 const argv = parseArgs(process.argv.slice(2), {
   alias: {
-    h: 'help',
-    l: 'list',
-    f: 'force',
-    F: 'forceAll'
+    h: "help",
+    l: "list",
+    f: "force",
+    F: "forceAll"
   },
-  boolean: ['help', 'list', 'forceAll']
+  boolean: ["help", "list", "forceAll"]
 });
 
 const usage = `
@@ -40,7 +38,7 @@ build [-h][-f <l|d|c>][-F]
         code for how the HTML is converted to JSON, clear this.
  -F - clear all caches
 
-`
+`;
 
 if (argv.help) {
   console.log(usage);
@@ -49,11 +47,11 @@ if (argv.help) {
 
 let pathsToRemove = [];
 if (argv.force) {
-  if (argv.force === 'l') {
+  if (argv.force === "l") {
     pathsToRemove = [listCachePath];
-  } else if (argv.force === 'd') {
+  } else if (argv.force === "d") {
     pathsToRemove = [detailsCachePath, detailsConvertedCachePath];
-  } else if (argv.force === 'c') {
+  } else if (argv.force === "c") {
     pathsToRemove = [detailsConvertedCachePath];
   } else {
     console.error(`${argv.force} is not a valid argument to -f`);
@@ -65,10 +63,12 @@ if (argv.forceAll) {
 }
 
 const go = async () => {
-  await Promise.all(pathsToRemove.map(async cachePath => {
-    console.log(`removing ${cachePath}`);
-    await fs.remove(cachePath)
-  }));
+  await Promise.all(
+    pathsToRemove.map(async cachePath => {
+      console.log(`removing ${cachePath}`);
+      await fs.remove(cachePath);
+    })
+  );
   if (!fs.existsSync(listCachePath)) {
     await fetchAndWriteList();
     console.log("Fetched and wrote list");
@@ -77,43 +77,45 @@ const go = async () => {
   const phoneIds = list.map(details => parseInt(details.phone_id, 10));
 
   const loadingDetailsBar = new ProgressBar({
-    schema: 'fetched :current/:total :bar',
+    schema: "fetched :current/:total :bar",
     total: phoneIds.length
   });
   const convertingDetailsBar = new ProgressBar({
-    schema: 'converted :current/:total :bar',
+    schema: "converted :current/:total :bar",
     total: phoneIds.length
   });
   const injectingDetailsBar = new ProgressBar({
-    schema: 'injected :current/:total :bar',
+    schema: "injected :current/:total :bar",
     total: phoneIds.length
   });
 
   for (const item of list) {
     const id = item.phone_id;
-    const filename = path.join(detailsCachePath, id + '.html');
+    const filename = path.join(detailsCachePath, `${id}.html`);
     if (!fs.existsSync(filename)) await fetchAndWriteDetails(id);
     loadingDetailsBar.tick();
   }
-  console.log("Fetched and wrote missing detail html files")
-  
+  console.log("Fetched and wrote missing detail html files");
+
   for (const item of list) {
     const id = item.phone_id;
-    const filename = path.join(detailsConvertedCachePath, id + '.html');
+    const filename = path.join(detailsConvertedCachePath, `${id}.html`);
     if (!fs.existsSync(filename)) await convertAndWriteDetails(id, item);
     convertingDetailsBar.tick();
   }
-  
+
   console.log("Converted details html files and wrote as json");
 
   const [db, collection] = await getDbAndCollection();
-  await collection.deleteMany({ phone_id: {$in: phoneIds}});
+  await collection.deleteMany({ phone_id: { $in: phoneIds } });
 
   for (const item of list) {
     const id = item.phone_id;
-    const filename = path.join(detailsConvertedCachePath, id + '.json');
+    const filename = path.join(detailsConvertedCachePath, `${id}.json`);
     if (!fs.existsSync(filename)) {
-      throw new Error(`Converted JSON details file for id ${id} does not exist`);
+      throw new Error(
+        `Converted JSON details file for id ${id} does not exist`
+      );
     }
     const details = await fs.readJson(filename);
     await collection.insertOne(details);
@@ -121,9 +123,9 @@ const go = async () => {
   }
 
   await db.close();
-  console.log('Wrote converted details JSON files to db');
+  console.log("Wrote converted details JSON files to db");
   process.exit();
-}
+};
 
 go().catch(e => {
   console.error(e);

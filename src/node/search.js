@@ -1,15 +1,15 @@
-require('source-map-support').install({ environment: 'node' });
+import parseArgs from "minimist";
+import esprima from "esprima";
+import { getDbAndCollection } from "./lib/mongo";
 
-import parseArgs from 'minimist';
-import esprima from 'esprima';
-import {getDbAndCollection} from './mongo';
+require("source-map-support").install({ environment: "node" });
 
-var argv = parseArgs(process.argv.slice(2), {
+const argv = parseArgs(process.argv.slice(2), {
   alias: {
-    h: 'help',
-    d: 'debug'
+    h: "help",
+    d: "debug"
   },
-  boolean: ['help', 'debug']
+  boolean: ["help", "debug"]
 });
 
 const usage = `
@@ -19,54 +19,54 @@ search [-h][-d] [query][,query...]
  query - something to be translated to mongodb like things, so...
   - "size.width $gte 50"
   - "memory $regex /[234] GB RAM/"
-`
+`;
 
 if (argv.help) {
   console.log(usage);
   process.exit();
 }
 
-const convertAstExpressionToObject = (expression) => {
-  if (expression.type == 'Literal') {
+const convertAstExpressionToObject = expression => {
+  if (expression.type === "Literal") {
     return expression.value;
   }
-  if (expression.type == 'Identifier') {
+  if (expression.type === "Identifier") {
     // identifiers are for existing variables. we have none of those, so treat this like a literal instead
     return expression.name;
   }
-  if (expression.type == 'ArrayExpression') {
+  if (expression.type === "ArrayExpression") {
     return expression.elements.map(convertAstExpressionToObject);
   }
-  if (expression.type == 'ObjectExpression') {
+  if (expression.type === "ObjectExpression") {
     const value = {};
     expression.properties.forEach(property => {
-      const name = property.key.name;
+      const { name } = property.key;
       value[name] = convertAstExpressionToObject(property.value);
     });
     return value;
   }
   throw new Error(`Can't handle expression type ${expression.type}`);
-  // if (expression.type == 'NewExpression') {
+  // if (expression.type === 'NewExpression') {
   //   const {callee, arguments} = expression;
-  //   // this'll be 
+  //   // this'll be
   //   return eval(
   //     `new ${callee}(` +
   //       `${arguments.map(convertAstNodeToObject})})`
   //   );
   // }
-}
+};
 
-const convertAstNodeToObject = (astNode) => {
-  if (astNode.type == 'ExpressionStatement') {
+const convertAstNodeToObject = astNode => {
+  if (astNode.type === "ExpressionStatement") {
     return convertAstExpressionToObject(astNode.expression);
   }
-  if (astNode.type == 'BlockStatement') {
+  if (astNode.type === "BlockStatement") {
     const value = {};
     astNode.body.forEach(childAstNode => {
-      if (childAstNode.type == 'LabeledStatement') {
-        const {label, body} = childAstNode;
-        if (label.type != 'Identifier') {
-          throw new Error(`Unknown label type ${label.type}`)
+      if (childAstNode.type === "LabeledStatement") {
+        const { label, body } = childAstNode;
+        if (label.type !== "Identifier") {
+          throw new Error(`Unknown label type ${label.type}`);
         }
         value[label.name] = convertAstNodeToObject(body);
       }
@@ -74,15 +74,14 @@ const convertAstNodeToObject = (astNode) => {
     return value;
   }
   throw new Error(`Unknown type ${astNode.type}`);
-}
+};
 
-const convertQueryStringToMongoQuery = (queryString) => {
-
+const convertQueryStringToMongoQuery = queryString => {
   const queryStringParts = queryString.split(/\s+/);
   let [name, op, ...value] = queryStringParts;
-  
+
   const isOr = !!name.match(/^\$?or/);
-  
+
   // everything else is like {propname: filter}
   // but or is like {$or: [filter, filter]}
   if (isOr) {
@@ -90,10 +89,13 @@ const convertQueryStringToMongoQuery = (queryString) => {
     op = name;
   }
   if (!op.match(/^\$/)) {
-    op = '$' + op;
+    op = `$${op}`;
   }
 
-  value = value.join(' ').replace(/^\s+/, '').replace(/\s+$/, '');
+  value = value
+    .join(" ")
+    .replace(/^\s+/, "")
+    .replace(/\s+$/, "");
   if (!value) {
     throw new Error(`query must have value -> ${queryString}`);
   }
@@ -104,7 +106,9 @@ const convertQueryStringToMongoQuery = (queryString) => {
   if (isOr) {
     name = op;
     value = value.map(childQueryString => {
-      const [childName, childValue] = convertQueryStringToMongoQuery(childQueryString);
+      const [childName, childValue] = convertQueryStringToMongoQuery(
+        childQueryString
+      );
       return {
         [childName]: childValue
       };
@@ -112,34 +116,39 @@ const convertQueryStringToMongoQuery = (queryString) => {
   } else {
     value = {
       [op]: value
-    }
+    };
   }
   return [name, value];
-}
+};
 
-const search = async (queryStrings) => {
-  let [db, collection] = await getDbAndCollection();
+const search = async queryStrings => {
+  const [db, collection] = await getDbAndCollection();
 
-  let mongoQuery = {};
+  const mongoQuery = {};
   queryStrings.forEach(queryString => {
-    let [name, value] = convertQueryStringToMongoQuery(queryString);
+    const [name, initialValue] = convertQueryStringToMongoQuery(queryString);
+    let value = initialValue;
     if (mongoQuery[name]) {
       value = {
         ...mongoQuery[name],
         ...value
-      }
+      };
     }
     mongoQuery[name] = value;
   });
   if (argv.debug) {
-    console.log(`[DEBUG] query: ${JSON.stringify(mongoQuery, null, 2)}`)
+    console.log(`[DEBUG] query: ${JSON.stringify(mongoQuery, null, 2)}`);
   }
-  const results = await collection.find(mongoQuery).project({_id:0}).toArray();
-  console.log(JSON.stringify(results, null, 2));
+  const results = await collection
+    .find(mongoQuery)
+    .project({ _id: 0 })
+    .toArray();
+  // making an html file and opening it would probably be better
+  console.log(JSON.stringify(results), null, 2);
   console.log(`Found ${results.length} results`);
 
   await db.close();
-}
+};
 search(argv._).catch(e => {
   console.error(e);
   process.exit(1);
