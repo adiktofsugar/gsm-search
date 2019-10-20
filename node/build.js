@@ -1,17 +1,16 @@
-import parseArgs from "minimist";
-import fs from "fs-extra";
-import path from "path";
-import Promise from "promise";
-import ProgressBar from "ascii-progress";
-import { getDbAndCollection } from "./lib/mongo";
-import {
+const parseArgs = require("minimist");
+const fs = require("fs-extra");
+const path = require("path");
+const ProgressBar = require("ascii-progress");
+const { getDbAndCollection } = require("./lib/mongo");
+const {
   listCachePath,
   detailsCachePath,
   detailsConvertedCachePath
-} from "./lib/cachePaths";
-import fetchAndWriteList from "./lib/fetchAndWriteList";
-import fetchAndWriteDetails from "./lib/fetchAndWriteDetails";
-import convertAndWriteDetails from "./lib/convertAndWriteDetails";
+} = require("./lib/cachePaths");
+const fetchAndWriteList = require("./lib/fetchAndWriteList");
+const fetchAndWriteDetails = require("./lib/fetchAndWriteDetails");
+const convertAndWriteDetails = require("./lib/convertAndWriteDetails");
 
 require("source-map-support").install({ environment: "node" });
 

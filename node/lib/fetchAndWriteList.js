@@ -1,6 +1,6 @@
-import fetch from "isomorphic-fetch";
-import fs from "fs-extra";
-import { listCachePath } from "./cachePaths";
+const fetch = require("isomorphic-fetch");
+const fs = require("fs-extra");
+const { listCachePath } = require("./cachePaths");
 
 const getPhonesUrl = () => {
   const d = new Date();
@@ -10,7 +10,7 @@ const getPhonesUrl = () => {
   return `https://www.gsmarena.com/quicksearch-${cacheStr}.jpg`;
 };
 
-export default async () => {
+module.exports = async () => {
   const url = getPhonesUrl();
   const [makers, phones] = await fetch(url).then(r => r.json());
   /* eslint-disable camelcase */

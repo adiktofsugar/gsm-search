@@ -1,7 +1,7 @@
-import fs from "fs-extra";
-import path from "path";
-import { jsdom } from "jsdom";
-import { listCachePath, detailsCachePath } from "./cachePaths";
+const fs = require("fs-extra");
+const path = require("path");
+const { jsdom } = require("jsdom");
+const { listCachePath, detailsCachePath } = require("./cachePaths");
 
 // utility
 // https://developer.mozilla.org/en-US/docs/Web/API/Node/nodeType
@@ -147,7 +147,7 @@ const convertDetailsHtml = async markup => {
   return details;
 };
 
-export default async id => {
+module.exports = async id => {
   const filename = path.join(detailsCachePath, `${id}.html`);
   if (!fs.existsSync(filename)) {
     throw new Error(`Cannot get details for id ${id}`);

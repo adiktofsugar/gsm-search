@@ -1,6 +1,7 @@
 module.exports = {
-  babelrcRoots: [".", "./src/browser", "./src/node"],
+  babelrcRoots: [".", "./browser"],
   presets: [
+    "@babel/react",
     [
       "@babel/env",
       {

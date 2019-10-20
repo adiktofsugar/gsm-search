@@ -1,6 +1,6 @@
-import parseArgs from "minimist";
-import esprima from "esprima";
-import { getDbAndCollection } from "./lib/mongo";
+const parseArgs = require("minimist");
+const esprima = require("esprima");
+const { getDbAndCollection } = require("./lib/mongo");
 
 require("source-map-support").install({ environment: "node" });
 

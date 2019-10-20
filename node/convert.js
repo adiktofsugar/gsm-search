@@ -1,5 +1,5 @@
-import parseArgs from "minimist";
-import convertDetailsHtml from "./lib/convertDetailsHtml";
+const parseArgs = require("minimist");
+const convertDetailsHtml = require("./lib/convertDetailsHtml");
 
 require("source-map-support").install({ environment: "node" });
 

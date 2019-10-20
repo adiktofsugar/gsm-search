@@ -1,7 +1,7 @@
-import fetch from "isomorphic-fetch";
-import fs from "fs-extra";
-import path from "path";
-import { detailsCachePath, detailsConvertedCachePath } from "./cachePaths";
+const fetch = require("isomorphic-fetch");
+const fs = require("fs-extra");
+const path = require("path");
+const { detailsCachePath, detailsConvertedCachePath } = require("./cachePaths");
 
 const delay = ms =>
   new Promise(resolve => {
@@ -32,7 +32,7 @@ const getDetailsHtml = async (id, errorCount = 0) => {
   }
 };
 
-export default async id => {
+module.exports = async id => {
   const filename = path.join(detailsCachePath, `${id}.html`);
   const detailsHtml = await getDetailsHtml(id);
   // Delete derived converted data if the source changes

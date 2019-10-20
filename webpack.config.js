@@ -1,4 +1,3 @@
-const nodeExternals = require("webpack-node-externals");
 const path = require("path");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
 
@@ -10,38 +9,21 @@ const babelLoader = {
 };
 const babelRule = {
   test: /\.js$/,
-  include: path.resolve(__dirname, "src"),
+  include: path.resolve(__dirname, "browser"),
   loader: babelLoader
 };
 
 const mode =
   process.env.NODE_ENV === "production" ? "production" : "development";
 
-const nodeConfig = {
-  target: "node",
-  externals: nodeExternals(),
+module.exports = {
   mode,
   entry: {
-    build: path.resolve(__dirname, "src/node/build.js"),
-    search: path.resolve(__dirname, "src/node/search.js"),
-    convert: path.resolve(__dirname, "src/node/convert.js")
+    index: path.resolve(__dirname, "browser/index.js")
   },
+  devtool: "inline-source-map",
   output: {
-    path: path.resolve(__dirname, "dist/node"),
-    filename: "[name].js"
-  },
-  module: {
-    rules: [babelRule]
-  },
-  node: false
-};
-const browserConfig = {
-  mode,
-  entry: {
-    index: path.resolve(__dirname, "src/browser/index.js")
-  },
-  output: {
-    path: path.resolve(__dirname, "dist/browser"),
+    path: path.resolve(__dirname, "browser-dist"),
     filename: "[name].js"
   },
   module: {
@@ -49,8 +31,8 @@ const browserConfig = {
   },
   plugins: [
     new HtmlWebpackPlugin({
-      title: "GSM Search"
+      title: "GSM Search",
+      template: path.resolve(__dirname, "browser/index.ejs")
     })
   ]
 };
-module.exports = [nodeConfig, browserConfig];
