@@ -1,7 +1,7 @@
 import React, { useReducer } from "react";
 import { ApolloProvider } from "@apollo/react-hooks";
 import Typography from "@material-ui/core/Typography";
-import FilterList from "./FilterList";
+import FilterNav from "./FilterNav";
 import PhoneList from "./PhoneList";
 import reducer, { init } from "./reducer";
 import client from "./client";
@@ -14,7 +14,7 @@ const App = () => {
         <Typography component="h1" variant="h2" gutterBottom>
           Search for phones
         </Typography>
-        <FilterList state={state} dispatch={dispatch} />
+        <FilterNav state={state} dispatch={dispatch} />
         {state.filters.length ? <PhoneList filters={state.filters} /> : null}
       </div>
     </ApolloProvider>

@@ -35,9 +35,7 @@ export default (state, action) => {
       };
     }
     case "upsert": {
-      const {
-        values: { value, property }
-      } = action.payload;
+      const { value, property } = action.payload;
       const {
         pendingValue: currentPendingValue,
         pendingProperty: currentPendingProperty,

@@ -1,7 +1,7 @@
 import PropTypes from "prop-types";
-import filterValues from "./filterValues";
+import filterValue from "./filterValue";
 
 export default PropTypes.shape({
-  id: PropTypes.number.isRequired,
-  values: filterValues.isRequired
+  property: PropTypes.string.isRequired,
+  value: filterValue.isRequired
 });
