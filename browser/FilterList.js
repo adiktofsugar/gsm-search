@@ -2,20 +2,13 @@ import React, { useCallback } from "react";
 import PropTypes from "prop-types";
 import List from "@material-ui/core/List";
 import ListItem from "@material-ui/core/ListItem";
-import IconButton from "@material-ui/core/IconButton";
 import AddIcon from "@material-ui/icons/Add";
 import ClearIcon from "@material-ui/icons/Clear";
-import { withStyles } from "@material-ui/core/styles";
-import Filter from "./Filter";
+import filterShape from "./shapes/filter";
+import filterValuesShape from "./shapes/filterValues";
+import FilterForm from "./FilterForm";
 
-const styles = () => ({
-  form: {
-    display: "flex",
-    alignItems: "center"
-  }
-});
-
-const FilterList = ({ state, dispatch, classes }) => {
+const FilterList = ({ state, dispatch }) => {
   const { filters, pendingValues } = state;
   const updateFilter = useCallback(
     (id, values) => {
@@ -42,51 +35,36 @@ const FilterList = ({ state, dispatch, classes }) => {
     <List>
       {filters.map(filter => (
         <ListItem key={filter.id}>
-          <form
-            className={classes.form}
-            onSubmit={e => {
-              e.preventDefault();
+          <FilterForm
+            onChange={values => {
+              updateFilter(filter.id, values);
+            }}
+            values={filter.values}
+            icon={<ClearIcon />}
+            onSubmit={() => {
               removeFilter(filter.id);
             }}
-            autoComplete="off"
-          >
-            <Filter
-              onChange={values => {
-                updateFilter(filter.id, values);
-              }}
-              values={filter.values}
-            />
-            <IconButton type="submit">
-              <ClearIcon />
-            </IconButton>
-          </form>
+          />
         </ListItem>
       ))}
       <ListItem>
-        <form
-          className={classes.form}
-          onSubmit={e => {
-            e.preventDefault();
+        <FilterForm
+          onChange={updatePendingFilter}
+          values={pendingValues}
+          icon={<AddIcon />}
+          onSubmit={() => {
             addPendingFilter();
           }}
-          autoComplete="off"
-        >
-          <Filter onChange={updatePendingFilter} values={pendingValues} />
-          <IconButton type="submit">
-            <AddIcon />
-          </IconButton>
-        </form>
+        />
       </ListItem>
     </List>
   );
 };
 FilterList.propTypes = {
-  // eslint-disable-next-line react/forbid-prop-types
-  classes: PropTypes.object.isRequired,
   dispatch: PropTypes.func.isRequired,
   state: PropTypes.shape({
-    filters: PropTypes.array.isRequired,
-    pendingValues: PropTypes.object.isRequired
+    filters: PropTypes.arrayOf(filterShape).isRequired,
+    pendingValues: filterValuesShape.isRequired
   }).isRequired
 };
-export default withStyles(styles)(FilterList);
+export default FilterList;

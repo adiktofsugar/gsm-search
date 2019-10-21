@@ -1,6 +1,6 @@
 const parseArgs = require("minimist");
 const esprima = require("esprima");
-const { getDbAndCollection } = require("./lib/mongo");
+const mongo = require("./lib/mongo");
 
 require("source-map-support").install({ environment: "node" });
 
@@ -122,7 +122,7 @@ const convertQueryStringToMongoQuery = queryString => {
 };
 
 const search = async queryStrings => {
-  const [db, collection] = await getDbAndCollection();
+  const collection = await mongo.getCollection();
 
   const mongoQuery = {};
   queryStrings.forEach(queryString => {
@@ -147,7 +147,7 @@ const search = async queryStrings => {
   console.log(JSON.stringify(results), null, 2);
   console.log(`Found ${results.length} results`);
 
-  await db.close();
+  await mongo.close();
 };
 search(argv._).catch(e => {
   console.error(e);

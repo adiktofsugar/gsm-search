@@ -1,6 +1,6 @@
 const fs = require("fs-extra");
 const path = require("path");
-const { jsdom } = require("jsdom");
+const { JSDOM } = require("jsdom");
 const { listCachePath, detailsCachePath } = require("./cachePaths");
 
 // utility
@@ -99,10 +99,11 @@ const convertStatus = statusString => {
   // Available. Released 2013, November
   let available = false;
   let released = null;
-  const match = statusString.match(/^Available\. Released (.+)$/);
+  const match = statusString.match(/^Available\. Released (\d+),\s*(\w+)$/);
   if (match) {
     available = true;
-    released = match[1]; // eslint-disable-line prefer-destructuring
+    const [year, month] = match.slice(1);
+    released = new Date(`${month} ${year}`);
   }
   return { available, released };
 };
@@ -129,12 +130,12 @@ const convertRow = async row => {
 
 const convertDetailsHtml = async markup => {
   const options = {};
-  const doc = jsdom(
+  const dom = new JSDOM(
     `<html><body><table>${markup}</table></body></html>`,
     options
   );
-  const table = doc.documentElement.querySelector("body>table");
-  doc.close();
+  const table = dom.window.document.querySelector("body>table");
+  dom.window.close();
 
   const details = {};
   const rows = Array.from(table.querySelectorAll("tr"));

@@ -1,31 +1,36 @@
-import { MongoClient } from "mongodb";
+const { MongoClient } = require("mongodb");
 
-export const dbName = "gsmSearch";
-export const dbUrl = `mongodb://localhost:27017/${dbName}`;
+const dbName = "gsmSearch";
+const dbUrl = `mongodb://localhost:27017`;
 
-const getDb = async () =>
-  new Promise((resolve, reject) => {
-    MongoClient.connect(dbUrl, (error, db) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-      resolve(db);
-    });
-  });
-const getCollection = async db =>
-  new Promise((resolve, reject) => {
-    db.collection("phones", (error, collection) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-      resolve(collection);
-    });
-  });
+let currentClient;
+const getClient = async () => {
+  if (!currentClient) {
+    currentClient = new MongoClient(dbUrl);
+    await currentClient.connect();
+  }
+  return currentClient;
+};
 
-export const getDbAndCollection = async () => {
+const getDb = async () => {
+  const client = await getClient();
+  return client.db(dbName);
+};
+
+const close = async () => {
+  const client = await getClient();
+  await client.close();
+  currentClient = undefined;
+};
+
+const getCollection = async () => {
   const db = await getDb();
-  const collection = await getCollection(db);
-  return [db, collection];
+  return db.collection("phones");
+};
+
+module.exports = {
+  getClient,
+  getDb,
+  getCollection,
+  close
 };

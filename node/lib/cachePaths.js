@@ -1,6 +1,6 @@
 const path = require("path");
 
-const cacheDir = path.resolve(__dirname, "..", ".gsm-search-cache");
+const cacheDir = path.resolve(__dirname, "../..", ".gsm-search-cache");
 
 module.exports = {
   cacheDir,

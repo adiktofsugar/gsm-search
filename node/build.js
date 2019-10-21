@@ -2,7 +2,7 @@ const parseArgs = require("minimist");
 const fs = require("fs-extra");
 const path = require("path");
 const ProgressBar = require("ascii-progress");
-const { getDbAndCollection } = require("./lib/mongo");
+const mongo = require("./lib/mongo");
 const {
   listCachePath,
   detailsCachePath,
@@ -105,7 +105,7 @@ const go = async () => {
 
   console.log("Converted details html files and wrote as json");
 
-  const [db, collection] = await getDbAndCollection();
+  const collection = await mongo.getCollection();
   await collection.deleteMany({ phone_id: { $in: phoneIds } });
 
   for (const item of list) {
@@ -121,7 +121,7 @@ const go = async () => {
     injectingDetailsBar.tick();
   }
 
-  await db.close();
+  await mongo.close();
   console.log("Wrote converted details JSON files to db");
   process.exit();
 };

@@ -1,53 +1,60 @@
-import React from "react";
+import React, { useCallback } from "react";
 import PropTypes from "prop-types";
 import { withStyles } from "@material-ui/core/styles";
-import TextField from "@material-ui/core/TextField";
+import FormControl from "@material-ui/core/FormControl";
+import InputLabel from "@material-ui/core/InputLabel";
+import Select from "@material-ui/core/Select";
+import MenuItem from "@material-ui/core/MenuItem";
+import filterValues from "./shapes/filterValues";
+import classesShape from "./shapes/classes";
+import FilterValueInput from "./FilterValueInput";
+import queries from "./queries";
 
-const styles = () => ({});
+const styles = theme => ({
+  formControl: {
+    margin: theme.spacing(1),
+    minWidth: 120
+  }
+});
 
 const Filter = ({ classes, values, onChange }) => {
-  const onFieldChange = name => e => {
-    onChange({ ...values, [name]: e.target.value });
-  };
+  const onPropertyChange = useCallback(
+    e => {
+      const property = e.target.value;
+      onChange({ ...values, property });
+    },
+    [onChange, values]
+  );
+  const onValueChange = useCallback(value => {
+    onChange({ ...values, value });
+  });
   return (
-    <>
-      <TextField
-        id="property"
-        label="Property"
-        value={values.property || ""}
-        onChange={onFieldChange("property")}
-        className={classes.textField}
-        margin="normal"
-      />
-      <TextField
-        id="comparison"
-        label="Compare"
-        value={values.comparison || ""}
-        onChange={onFieldChange("comparison")}
-        className={classes.textField}
-        margin="normal"
-      />
-      <TextField
-        id="value"
-        label="Value"
-        value={values.value || ""}
-        onChange={onFieldChange("value")}
-        className={classes.textField}
-        margin="normal"
-      />
-    </>
+    <React.Fragment>
+      <FormControl className={classes.formControl}>
+        <InputLabel>Property</InputLabel>
+        <Select value={values.property} onChange={onPropertyChange}>
+          {queries.map(({ property }) => (
+            <MenuItem key={property} value={property}>
+              {property}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+      <FormControl className={classes.formControl}>
+        <FilterValueInput
+          property={values.property}
+          value={values.value}
+          onChange={onValueChange}
+        />
+      </FormControl>
+    </React.Fragment>
   );
 };
 
 Filter.propTypes = {
-  // eslint-disable-next-line react/forbid-prop-types
-  classes: PropTypes.object.isRequired,
+  classes: classesShape.isRequired,
   onChange: PropTypes.func.isRequired,
-  values: PropTypes.shape({
-    property: PropTypes.string,
-    comparison: PropTypes.string,
-    value: PropTypes.string
-  }).isRequired
+  values: filterValues.isRequired
 };
 
 export default withStyles(styles)(Filter);

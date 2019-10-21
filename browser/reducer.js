@@ -1,6 +1,12 @@
+import getDefaultValueForProperty from "./getDefaultValueForProperty";
+
+const getInitialValues = () => ({
+  property: ""
+});
+
 export const init = () => ({
   pendingId: 0,
-  pendingValues: {},
+  pendingValues: getInitialValues(),
   filters: []
 });
 
@@ -12,9 +18,12 @@ export default (state, action) => {
         pendingValues: values,
         filters: currentFilters
       } = state;
+      if (values.value === undefined) {
+        values.value = getDefaultValueForProperty(values.property);
+      }
       const filters = [...currentFilters, { id, values }];
       const pendingId = id + 1;
-      const pendingValues = {};
+      const pendingValues = getInitialValues();
       return {
         ...state,
         pendingId,
