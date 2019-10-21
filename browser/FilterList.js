@@ -4,27 +4,26 @@ import List from "@material-ui/core/List";
 import ListItem from "@material-ui/core/ListItem";
 import AddIcon from "@material-ui/icons/Add";
 import ClearIcon from "@material-ui/icons/Clear";
-import filterShape from "./shapes/filter";
-import filterValuesShape from "./shapes/filterValues";
+import stateShape from "./shapes/state";
 import FilterForm from "./FilterForm";
 
 const FilterList = ({ state, dispatch }) => {
-  const { filters, pendingValues } = state;
+  const { filters, pendingValue, pendingProperty } = state;
   const updateFilter = useCallback(
-    (id, values) => {
-      dispatch({ type: "update", payload: { id, values } });
+    (property, value) => {
+      dispatch({ type: "update", payload: { property, value } });
     },
     [dispatch]
   );
   const removeFilter = useCallback(
-    id => {
-      dispatch({ type: "remove", payload: { id } });
+    property => {
+      dispatch({ type: "remove", payload: { property } });
     },
     [dispatch]
   );
   const updatePendingFilter = useCallback(
-    values => {
-      dispatch({ type: "updatePending", payload: { values } });
+    (property, value) => {
+      dispatch({ type: "updatePending", payload: { property, value } });
     },
     [dispatch]
   );
@@ -34,23 +33,27 @@ const FilterList = ({ state, dispatch }) => {
   return (
     <List>
       {filters.map(filter => (
-        <ListItem key={filter.id}>
+        <ListItem key={filter.property}>
           <FilterForm
-            onChange={values => {
-              updateFilter(filter.id, values);
+            onChange={({ value }) => {
+              updateFilter(filter.property, value);
             }}
-            values={filter.values}
+            property={filter.property}
+            value={filter.value}
             icon={<ClearIcon />}
             onSubmit={() => {
-              removeFilter(filter.id);
+              removeFilter(filter.property);
             }}
           />
         </ListItem>
       ))}
       <ListItem>
         <FilterForm
-          onChange={updatePendingFilter}
-          values={pendingValues}
+          onChange={({ property, value }) => {
+            updatePendingFilter(property, value);
+          }}
+          property={pendingProperty}
+          value={pendingValue}
           icon={<AddIcon />}
           onSubmit={() => {
             addPendingFilter();
@@ -62,9 +65,6 @@ const FilterList = ({ state, dispatch }) => {
 };
 FilterList.propTypes = {
   dispatch: PropTypes.func.isRequired,
-  state: PropTypes.shape({
-    filters: PropTypes.arrayOf(filterShape).isRequired,
-    pendingValues: filterValuesShape.isRequired
-  }).isRequired
+  state: stateShape.isRequired
 };
 export default FilterList;

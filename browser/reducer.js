@@ -1,12 +1,8 @@
 import getDefaultValueForProperty from "./getDefaultValueForProperty";
 
-const getInitialValues = () => ({
-  property: ""
-});
-
 export const init = () => ({
-  pendingId: 0,
-  pendingValues: getInitialValues(),
+  pendingProperty: "",
+  pendingValue: "",
   filters: []
 });
 
@@ -14,51 +10,64 @@ export default (state, action) => {
   switch (action.type) {
     case "addPending": {
       const {
-        pendingId: id,
-        pendingValues: values,
+        pendingProperty: property,
+        pendingValue,
         filters: currentFilters
       } = state;
-      if (values.value === undefined) {
-        values.value = getDefaultValueForProperty(values.property);
-      }
-      const filters = [...currentFilters, { id, values }];
-      const pendingId = id + 1;
-      const pendingValues = getInitialValues();
+      const value =
+        pendingValue === undefined
+          ? getDefaultValueForProperty(property)
+          : pendingValue;
+      const filters = [...currentFilters, { property, value }];
       return {
         ...state,
-        pendingId,
-        pendingValues,
+        pendingProperty: "",
+        pendingValue: "",
         filters
       };
     }
     case "updatePending": {
-      const { values: pendingValues } = action.payload;
+      const { property, value } = action.payload;
       return {
         ...state,
-        pendingValues
+        pendingProperty: property,
+        pendingValue: value
       };
     }
-    case "update": {
-      const { id, values } = action.payload;
-      const { filters: currentFilters } = state;
-      const filters = currentFilters.map(filter => {
-        if (filter.id !== id) {
-          return filter;
+    case "upsert": {
+      const {
+        values: { value, property }
+      } = action.payload;
+      const {
+        pendingValue: currentPendingValue,
+        pendingProperty: currentPendingProperty,
+        filters: currentFilters
+      } = state;
+      let pendingProperty = currentPendingProperty;
+      let pendingValue = currentPendingValue;
+      if (currentPendingProperty === property) {
+        pendingProperty = "";
+        pendingValue = "";
+      }
+      const otherFilters = currentFilters.filter(f => f.property !== property);
+      const filters = [
+        ...otherFilters,
+        {
+          value,
+          property
         }
-        return {
-          ...filter,
-          values
-        };
-      });
+      ];
       return {
         ...state,
+        pendingValue,
+        pendingProperty,
         filters
       };
     }
     case "remove": {
-      const { id } = action.payload;
+      const { property } = action.payload;
       const { filters: currentFilters } = state;
-      const filters = currentFilters.filter(c => c.id !== id);
+      const filters = currentFilters.filter(f => f.property !== property);
       return {
         ...state,
         filters

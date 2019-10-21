@@ -1,6 +1,7 @@
 import PropTypes from "prop-types";
+import filterValueShape from "./filterValue";
 
 export default PropTypes.shape({
   property: PropTypes.string,
-  value: PropTypes.oneOfType([PropTypes.bool, PropTypes.string])
+  value: filterValueShape
 });
