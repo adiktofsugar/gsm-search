@@ -23,7 +23,7 @@
     "@material-ui/icons": "^4.5.1",
     "apollo-boost": "^0.4.4",
     "apollo-datasource": "^0.6.3",
-    "apollo-server": "^2.9.6",
+    "apollo-server": "^2.14.2",
     "ascii-progress": "^1.0.5",
     "core-js": "^3.1.4",
     "date-fns": "^2.5.1",
